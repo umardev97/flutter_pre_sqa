@@ -1,6 +1,6 @@
 name: flutter_pre_sqa
 description: A developer-first Flutter pre-SQA automation tool for validating Flutter projects before QA handoff.
-version: 0.1.0
+version: 0.2.0
 homepage: https://github.com/umardev97/flutter_pre_sqa
 repository: https://github.com/umardev97/flutter_pre_sqa
 issue_tracker: https://github.com/umardev97/flutter_pre_sqa/issues
@@ -11,9 +11,6 @@ topics:
   - cli
   - static-analysis
   - code-quality
-  - sqa
-  - quality-assurance
-  - testing
 
 environment:
   sdk: ">=3.0.0 <4.0.0"

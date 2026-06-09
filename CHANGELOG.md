@@ -2,14 +2,14 @@
 
 All notable changes to this project are documented in this file.
 
-## 0.1.0 - 2026-06-09
+## 0.2.0 - 2026-06-09
 
 - Added MIT license.
 - Added DartDoc comments.
 - Improved package documentation.
 
 
-## [1.0.0] - 2026-06-09
+## 0.0.0 - 2026-06-09
 
 - Initial release of `flutter_pre_sqa`
 - Added CLI commands for validation, reporting, auditing, fixing, and cleaning
