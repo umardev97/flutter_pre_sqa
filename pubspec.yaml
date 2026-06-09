@@ -1,0 +1,16 @@
+name: flutter_pre_sqa
+description: A reusable pre-SQA command-line checklist and validation runner for Flutter projects.
+version: 0.1.0
+
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+
+executables:
+  flutter_pre_sqa: flutter_pre_sqa
+
+dependencies:
+  args: ^2.5.0
+  path: ^1.9.0
+
+dev_dependencies:
+  lints: ^5.0.0
