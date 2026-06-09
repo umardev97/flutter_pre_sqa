@@ -1,0 +1,15 @@
+workflows:
+  pre_sqa_validation:
+    name: Flutter Pre-SQA
+    environment:
+      flutter: stable
+    scripts:
+      - name: Get dependencies
+dart pub get
+      - name: Run validation
+dart run flutter_pre_sqa ci --coverage --json
+      - name: Analyze
+dart analyze
+    artifacts:
+      - build/**
+      - pre_sqa_report.*

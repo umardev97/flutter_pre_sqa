@@ -1,0 +1,17 @@
+# Dart and Flutter
+dir/build/
+.dart_tool/
+.packages
+.pub/
+pubspec.lock
+
+# IntelliJ
+*.iml
+.idea/
+
+# VS Code
+.vscode/
+
+# Generated report files
+pre_sqa_report.*
+coverage/

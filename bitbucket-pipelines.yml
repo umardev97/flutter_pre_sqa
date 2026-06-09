@@ -1,0 +1,12 @@
+image: dart:stable
+
+pipelines:
+  default:
+    - step:
+        name: Validate Flutter Pre-SQA
+        caches:
+          - dart
+        script:
+          - dart pub get
+          - dart run flutter_pre_sqa ci --coverage --json
+          - dart analyze

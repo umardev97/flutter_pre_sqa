@@ -1,136 +1,172 @@
 import 'dart:io';
 
-import 'package:args/args.dart';
+import 'config/pre_sqa_config.dart';
+import 'models/check_result.dart';
+import 'models/report_data.dart';
+import 'reports/report_generator.dart';
+import 'services/environment_service.dart';
+import 'services/process_runner.dart';
 
 class PreSqaRunner {
-  PreSqaRunner({
-    required this.skipBuild,
-    required this.skipTests,
-    required this.skipOutdated,
-    required this.failFast,
-    required this.reportPath,
-  });
+  PreSqaRunner(
+      {required this.config,
+      this.verbose = false,
+      ProcessRunner? processRunner})
+      : processRunner = processRunner ?? ProcessRunner(),
+        environment = EnvironmentService();
 
-  factory PreSqaRunner.fromArgs(List<String> arguments) {
-    final parser = ArgParser()
-      ..addFlag('skip-build', negatable: false, help: 'Skip flutter build apk --debug.')
-      ..addFlag('skip-tests', negatable: false, help: 'Skip flutter test.')
-      ..addFlag('skip-outdated', negatable: false, help: 'Skip flutter pub outdated.')
-      ..addFlag('fail-fast', defaultsTo: false, help: 'Stop on first failed command.')
-      ..addOption('report', defaultsTo: 'pre_sqa_report.md', help: 'Markdown report output path.');
+  final PreSqaConfig config;
+  final bool verbose;
+  final ProcessRunner processRunner;
+  final EnvironmentService environment;
+  final List<CheckResult> results = [];
+  String coverageSummary = 'Not generated';
 
-    final result = parser.parse(arguments);
-
-    return PreSqaRunner(
-      skipBuild: result['skip-build'] as bool,
-      skipTests: result['skip-tests'] as bool,
-      skipOutdated: result['skip-outdated'] as bool,
-      failFast: result['fail-fast'] as bool,
-      reportPath: result['report'] as String,
-    );
-  }
-
-  final bool skipBuild;
-  final bool skipTests;
-  final bool skipOutdated;
-  final bool failFast;
-  final String reportPath;
-
-  final List<_CheckResult> _results = [];
-
-  Future<int> run() async {
+  Future<int> run({
+    bool strict = false,
+    bool ci = false,
+    bool coverage = false,
+    bool skipBuild = false,
+    bool skipTests = false,
+    bool buildAndroid = false,
+    bool buildIos = false,
+  }) async {
     _printHeader();
 
     if (!File('pubspec.yaml').existsSync()) {
-      stderr.writeln('pubspec.yaml not found. Run this command from your Flutter project root.');
+      stderr
+          .writeln('pubspec.yaml not found. Run from a Flutter project root.');
       return 1;
     }
 
-    await _runCommand('Flutter version', 'flutter', ['--version'], required: true);
-    await _runCommand('Clean project', 'flutter', ['clean'], required: true);
-    await _runCommand('Get packages', 'flutter', ['pub', 'get'], required: true);
-    await _runCommand('Format code', 'dart', ['format', 'lib', 'test', 'integration_test', '.']);
-    await _runCommand('Static analysis', 'flutter', ['analyze'], required: true);
-
-    if (!skipTests) {
-      await _runCommand('Unit/widget tests', 'flutter', ['test']);
+    final envCheck = await environment.verify(verbose: verbose);
+    if (!envCheck.success) {
+      stderr.writeln(envCheck.message);
+      return 1;
     }
 
-    if (!skipOutdated) {
-      await _runCommand('Dependency outdated check', 'flutter', ['pub', 'outdated']);
+    await _runCommand('Flutter clean', 'flutter', ['clean'], required: true);
+    await _runCommand('Get dependencies', 'flutter', ['pub', 'get'],
+        required: true);
+
+    if (config.checks.analyze) {
+      await _runCommand('Static analysis', 'flutter', ['analyze'],
+          required: strict || config.rules.failOnWarnings);
     }
 
-    await _scanProjectFiles();
+    if (!skipTests && config.checks.tests) {
+      if (coverage) {
+        await _runCommand('Unit/widget tests with coverage', 'flutter',
+            ['test', '--coverage'],
+            required: true);
+        coverageSummary = await _parseLcovCoverage('coverage/lcov.info');
+      } else {
+        await _runCommand('Unit/widget tests', 'flutter', ['test'],
+            required: true);
+      }
+    }
+
+    if (config.checks.dependencyAudit) {
+      await _runCommand('Dependency audit', 'flutter', ['pub', 'outdated'],
+          required: false);
+    }
+
+    await _runProjectScan();
 
     if (!skipBuild) {
-      await _runCommand('Android debug build', 'flutter', ['build', 'apk', '--debug'], required: true);
+      final runAndroid = buildAndroid || config.checks.buildAndroid;
+      final runIos = buildIos || config.checks.buildIos;
+      if (runAndroid) {
+        await _runCommand(
+            'Android debug build', 'flutter', ['build', 'apk', '--debug'],
+            required: true);
+        await _runCommand(
+            'Android release build', 'flutter', ['build', 'apk', '--release'],
+            required: true);
+      }
+      if (runIos) {
+        await _runCommand(
+            'iOS debug build', 'flutter', ['build', 'ios', '--debug'],
+            required: true);
+        await _runCommand(
+            'iOS release build', 'flutter', ['build', 'ios', '--release'],
+            required: true);
+      }
     }
 
-    await _writeReport();
     _printSummary();
-
-    return _results.any((result) => result.failed && result.required) ? 1 : 0;
+    return results.any((result) => result.failed && result.required) ? 1 : 0;
   }
 
-  Future<void> _runCommand(
-    String title,
-    String executable,
-    List<String> arguments, {
-    bool required = false,
-  }) async {
-    stdout.writeln('\n▶ $title');
-    final result = await Process.run(executable, arguments, runInShell: true);
-    final success = result.exitCode == 0;
-
-    if (result.stdout.toString().trim().isNotEmpty) {
-      stdout.writeln(result.stdout);
-    }
-    if (result.stderr.toString().trim().isNotEmpty) {
-      stderr.writeln(result.stderr);
+  Future<int> runAudit() async {
+    _printHeader();
+    final envCheck = await environment.verify(verbose: verbose);
+    if (!envCheck.success) {
+      stderr.writeln(envCheck.message);
+      return 1;
     }
 
-    _results.add(_CheckResult(
-      title: title,
-      command: '$executable ${arguments.join(' ')}',
-      exitCode: result.exitCode,
-      required: required,
-      notes: success ? 'Passed' : 'Failed',
-    ));
-
-    if (!success && required && failFast) {
-      await _writeReport();
-      exit(result.exitCode);
+    if (config.checks.dependencyAudit) {
+      await _runCommand('Dependency audit', 'flutter', ['pub', 'outdated'],
+          required: false);
     }
+    await _runProjectScan();
+    _printSummary();
+    return results.any((result) => result.failed && result.required) ? 1 : 0;
   }
 
-  Future<void> _scanProjectFiles() async {
-    stdout.writeln('\n▶ Project hygiene scan');
+  Future<void> runFixes() async {
+    await _runCommand('Format Dart code', 'dart', ['format', '.'],
+        required: false);
+    await _runCommand('Apply Dart fixes', 'dart', ['fix', '--apply'],
+        required: false);
+  }
 
-    final dartFiles = Directory('lib').existsSync()
-        ? Directory('lib').listSync(recursive: true).whereType<File>().where((file) => file.path.endsWith('.dart')).toList()
-        : <File>[];
+  Future<void> _runProjectScan() async {
+    final directories = config.scanDirectories
+        .where((dir) => Directory(dir).existsSync())
+        .toList();
+    final dartFiles = directories
+        .expand(
+            (dir) => Directory(dir).listSync(recursive: true).whereType<File>())
+        .where((file) => file.path.endsWith('.dart'))
+        .toList();
 
     var printCount = 0;
+    var debugPrintCount = 0;
     var todoCount = 0;
-    var getPutCount = 0;
+    var fixmeCount = 0;
+    var hackCount = 0;
+    var emptyCatchCount = 0;
+    var largeFileCount = 0;
 
     for (final file in dartFiles) {
       final text = await file.readAsString();
       printCount += RegExp(r'\bprint\s*\(').allMatches(text).length;
-      todoCount += RegExp(r'\b(TODO|FIXME)\b').allMatches(text).length;
-      getPutCount += RegExp(r'Get\.put\s*\(').allMatches(text).length;
+      debugPrintCount += RegExp(r'\bdebugPrint\s*\(').allMatches(text).length;
+      todoCount += RegExp(r'\bTODO\b').allMatches(text).length;
+      fixmeCount += RegExp(r'\bFIXME\b').allMatches(text).length;
+      hackCount += RegExp(r'\bHACK\b').allMatches(text).length;
+      emptyCatchCount +=
+          RegExp(r'catch\s*\([^)]*\)\s*\{\s*\}').allMatches(text).length;
+      if (text.split('\n').length > 500) {
+        largeFileCount += 1;
+      }
     }
 
     final notes = <String>[
+      'Directories scanned: ${directories.join(', ')}',
       'Dart files scanned: ${dartFiles.length}',
       'print() usages: $printCount',
-      'TODO/FIXME comments: $todoCount',
-      'Get.put() usages: $getPutCount',
+      'debugPrint() usages: $debugPrintCount',
+      'TODO comments: $todoCount',
+      'FIXME comments: $fixmeCount',
+      'HACK comments: $hackCount',
+      'Empty catch blocks: $emptyCatchCount',
+      'Large files >500 lines: $largeFileCount',
     ].join('\n');
 
-    stdout.writeln(notes);
-
-    _results.add(_CheckResult(
+    results.add(CheckResult(
       title: 'Project hygiene scan',
       command: 'internal scan',
       exitCode: 0,
@@ -139,77 +175,77 @@ class PreSqaRunner {
     ));
   }
 
-  Future<void> _writeReport() async {
-    final buffer = StringBuffer()
-      ..writeln('# Flutter Pre-SQA Report')
-      ..writeln()
-      ..writeln('Generated: ${DateTime.now().toIso8601String()}')
-      ..writeln()
-      ..writeln('## Automated Checks')
-      ..writeln()
-      ..writeln('| Check | Command | Status | Required |')
-      ..writeln('|---|---|---|---|');
-
-    for (final result in _results) {
-      buffer.writeln('| ${result.title} | `${result.command}` | ${result.failed ? 'FAIL' : 'PASS'} | ${result.required ? 'Yes' : 'No'} |');
+  Future<void> _runCommand(
+      String title, String executable, List<String> arguments,
+      {bool required = false}) async {
+    stdout.writeln('\n▶ $title');
+    final result = await processRunner.run(executable, arguments);
+    if (result.stdout.isNotEmpty) {
+      stdout.writeln(result.stdout);
+    }
+    if (result.stderr.isNotEmpty) {
+      stderr.writeln(result.stderr);
     }
 
-    buffer
-      ..writeln()
-      ..writeln('## Manual SQA Handoff Checklist')
-      ..writeln()
-      ..writeln('- [ ] UI compared with Figma')
-      ..writeln('- [ ] Login/signup/forgot password verified')
-      ..writeln('- [ ] Required field validations verified')
-      ..writeln('- [ ] API success/error/no-internet states verified')
-      ..writeln('- [ ] CRUD flows verified')
-      ..writeln('- [ ] Permissions verified')
-      ..writeln('- [ ] Payments/subscriptions verified, if applicable')
-      ..writeln('- [ ] Role-based access verified')
-      ..writeln('- [ ] Small and large device layouts verified')
-      ..writeln('- [ ] Regression testing completed')
-      ..writeln()
-      ..writeln('## Notes')
-      ..writeln()
-      ..writeln('Business logic still needs manual verification against client requirements.');
+    if (verbose && result.stdout.isEmpty && result.stderr.isEmpty) {
+      stdout.writeln('Command completed with exit code ${result.exitCode}.');
+    }
 
-    await File(reportPath).writeAsString(buffer.toString());
-    stdout.writeln('\nReport generated: $reportPath');
+    results.add(CheckResult(
+      title: title,
+      command: '$executable ${arguments.join(' ')}',
+      exitCode: result.exitCode,
+      required: required,
+      notes: result.stderr.isNotEmpty
+          ? result.stderr
+          : result.stdout.isNotEmpty
+              ? result.stdout
+              : 'Passed',
+    ));
+  }
+
+  Future<String> _parseLcovCoverage(String path) async {
+    final file = File(path);
+    if (!file.existsSync()) return 'Coverage file not found: $path';
+
+    final lines = await file.readAsLines();
+    var total = 0;
+    var covered = 0;
+
+    for (final line in lines) {
+      if (line.startsWith('DA:')) {
+        total += 1;
+        final parts = line.substring(3).split(',');
+        if (parts.length == 2 &&
+            int.tryParse(parts[1]) != null &&
+            int.parse(parts[1]) > 0) {
+          covered += 1;
+        }
+      }
+    }
+
+    if (total == 0) return 'No coverage data available.';
+    final percent = (covered / total * 100).toStringAsFixed(1);
+    return 'Coverage: $covered/$total lines ($percent%).';
   }
 
   void _printHeader() {
     stdout.writeln('==============================');
-    stdout.writeln(' FLUTTER PRE-SQA RUNNER');
+    stdout.writeln(' FLUTTER PRE-SQA VALIDATION');
     stdout.writeln('==============================');
+    stdout.writeln('Project: ${config.project.name}');
   }
 
   void _printSummary() {
-    final failedRequired = _results.where((result) => result.failed && result.required).length;
-    final failedOptional = _results.where((result) => result.failed && !result.required).length;
-
+    final failedRequired =
+        results.where((result) => result.failed && result.required).length;
+    final failedOptional =
+        results.where((result) => result.failed && !result.required).length;
     stdout.writeln('\n==============================');
     stdout.writeln(' SUMMARY');
     stdout.writeln('==============================');
     stdout.writeln('Required failures: $failedRequired');
     stdout.writeln('Optional failures: $failedOptional');
-    stdout.writeln('Report: $reportPath');
+    stdout.writeln('Coverage: $coverageSummary');
   }
-}
-
-class _CheckResult {
-  _CheckResult({
-    required this.title,
-    required this.command,
-    required this.exitCode,
-    required this.required,
-    required this.notes,
-  });
-
-  final String title;
-  final String command;
-  final int exitCode;
-  final bool required;
-  final String notes;
-
-  bool get failed => exitCode != 0;
 }

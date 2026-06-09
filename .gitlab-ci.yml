@@ -1,0 +1,10 @@
+stages:
+  - validate
+
+validate:
+  image: dart
+  stage: validate
+  script:
+    - dart pub get
+    - dart run flutter_pre_sqa ci --coverage --json
+    - dart analyze

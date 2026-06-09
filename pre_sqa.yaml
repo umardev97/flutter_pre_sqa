@@ -1,0 +1,33 @@
+project:
+  name: My App
+
+checks:
+  analyze: true
+  tests: true
+  integrationTests: true
+  buildAndroid: true
+  buildIos: false
+  scanTodos: true
+  scanPrints: true
+  scanFixmes: true
+  scanHacks: true
+  dependencyAudit: true
+
+rules:
+  failOnWarnings: false
+  failOnTodos: false
+  failOnPrints: true
+
+report:
+  format: markdown
+  output: pre_sqa_report.md
+
+exclude:
+  - build/**
+  - .dart_tool/**
+  - ios/Pods/**
+
+scan_directories:
+  - lib
+  - test
+  - integration_test

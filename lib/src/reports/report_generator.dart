@@ -1,0 +1,438 @@
+import 'dart:convert';
+import 'dart:io';
+
+import '../config/pre_sqa_config.dart';
+import '../models/check_result.dart';
+import '../models/report_data.dart';
+
+class ReportGenerator {
+  ReportGenerator({
+    required this.results,
+    required this.config,
+    required this.projectName,
+    this.flutterVersion = '',
+    this.dartVersion = '',
+  });
+
+  final List<CheckResult> results;
+  final PreSqaConfig config;
+  final String projectName;
+  final String flutterVersion;
+  final String dartVersion;
+
+  Future<void> writeReports({
+    required String basePath,
+    bool includeJson = false,
+    bool includeHtml = false,
+    bool includeMarkdown = true,
+  }) async {
+    final reportData = _buildReportData(basePath);
+    if (includeMarkdown) {
+      await _writeMarkdown('$basePath.md', reportData);
+      await _writeSqaHandoffReport('SQA_Handoff_Report.md', reportData);
+      await _writeReleaseReadinessReport(
+          'Release_Readiness_Report.md', reportData);
+    }
+    if (includeHtml) {
+      await _writeHtml('$basePath.html', reportData);
+    }
+    if (includeJson) {
+      await _writeJson('$basePath.json', reportData);
+    }
+  }
+
+  ReportData _buildReportData(String basePath) {
+    final totalWarnings =
+        results.where((result) => result.notes.contains('WARNING')).length;
+    final totalErrors = results.where((result) => result.failed).length;
+    final passedChecks = results.where((result) => !result.failed).length;
+    final failedChecks = results.where((result) => result.failed).length;
+
+    final todoCount = _scanCount('TODO');
+    final fixmeCount = _scanCount('FIXME');
+    final hackCount = _scanCount('HACK');
+    final printCount = _scanCount('print()');
+    final debugPrintCount = _scanCount('debugPrint()');
+    final largeFileCount = _extractHygieneValue('Large files >500 lines');
+    final emptyCatchCount = _extractHygieneValue('Empty catch blocks');
+
+    final reportData = ReportData(
+      projectName: projectName,
+      flutterVersion: flutterVersion,
+      dartVersion: dartVersion,
+      totalWarnings: totalWarnings,
+      totalErrors: totalErrors,
+      passedChecks: passedChecks,
+      failedChecks: failedChecks,
+      dependencyIssues: _findDependencyIssues(),
+      todoCount: todoCount,
+      fixmeCount: fixmeCount,
+      hackCount: hackCount,
+      printCount: printCount,
+      debugPrintCount: debugPrintCount,
+      largeFileCount: largeFileCount,
+      emptyCatchCount: emptyCatchCount,
+      buildStatus: _findBuildStatus(),
+      testStatus: _findTestStatus(),
+      coverageSummary:
+          'Coverage task result is available but not yet parsed in detail.',
+      architectureScore: _computeArchitectureScore(
+        todoCount: todoCount,
+        fixmeCount: fixmeCount,
+        hackCount: hackCount,
+        largeFileCount: largeFileCount,
+        emptyCatchCount: emptyCatchCount,
+      ),
+      securityScore: _computeSecurityScore(
+        dependencyIssues: _findDependencyIssues(),
+        todoCount: todoCount,
+        hackCount: hackCount,
+        printCount: printCount,
+        debugPrintCount: debugPrintCount,
+        emptyCatchCount: emptyCatchCount,
+      ),
+      performanceScore: _computePerformanceScore(
+        printCount: printCount,
+        debugPrintCount: debugPrintCount,
+        largeFileCount: largeFileCount,
+        buildStatus: _findBuildStatus(),
+        testStatus: _findTestStatus(),
+      ),
+      aiReviewSummary: _buildAiReviewSummary(
+        todoCount: todoCount,
+        fixmeCount: fixmeCount,
+        hackCount: hackCount,
+        printCount: printCount,
+        debugPrintCount: debugPrintCount,
+        largeFileCount: largeFileCount,
+        emptyCatchCount: emptyCatchCount,
+      ),
+      results: results,
+      config: config,
+    );
+
+    return reportData;
+  }
+
+  int _scanCount(String token) {
+    return results.fold<int>(
+        0, (count, result) => count + _tokenCount(result.notes, token));
+  }
+
+  int _tokenCount(String source, String token) {
+    return RegExp(RegExp.escape(token), caseSensitive: false)
+        .allMatches(source)
+        .length;
+  }
+
+  int _extractHygieneValue(String key) {
+    final hygieneResult = results.firstWhere(
+      (result) => result.title == 'Project hygiene scan',
+      orElse: () => CheckResult(
+        title: '',
+        command: '',
+        exitCode: 0,
+        required: false,
+        notes: '',
+      ),
+    );
+    final regex = RegExp('$key: (\\d+)', caseSensitive: false);
+    final match = regex.firstMatch(hygieneResult.notes);
+    return match != null ? int.parse(match.group(1)!) : 0;
+  }
+
+  List<String> _findDependencyIssues() {
+    return results
+        .where((result) => result.title.toLowerCase().contains('dependency'))
+        .map((result) => result.notes)
+        .toList();
+  }
+
+  String _findBuildStatus() {
+    final buildResults = results
+        .where((result) => result.title.toLowerCase().contains('build'))
+        .toList();
+    if (buildResults.isEmpty) return 'Not executed';
+    if (buildResults.any((result) => result.failed)) return 'Failed';
+    return 'Succeeded';
+  }
+
+  String _findTestStatus() {
+    final testResults = results
+        .where((result) => result.title.toLowerCase().contains('test'))
+        .toList();
+    if (testResults.isEmpty) return 'Not executed';
+    if (testResults.any((result) => result.failed)) return 'Failed';
+    return 'Succeeded';
+  }
+
+  int _computeArchitectureScore({
+    required int todoCount,
+    required int fixmeCount,
+    required int hackCount,
+    required int largeFileCount,
+    required int emptyCatchCount,
+  }) {
+    var score = 100;
+    if (todoCount > 0) score -= 5;
+    if (fixmeCount > 0) score -= 5;
+    if (hackCount > 0) score -= 10;
+    if (largeFileCount > 0) score -= 10;
+    if (emptyCatchCount > 0) score -= 10;
+    return score.clamp(0, 100);
+  }
+
+  int _computeSecurityScore({
+    required List<String> dependencyIssues,
+    required int todoCount,
+    required int hackCount,
+    required int printCount,
+    required int debugPrintCount,
+    required int emptyCatchCount,
+  }) {
+    var score = 100;
+    if (dependencyIssues.isNotEmpty) score -= 25;
+    if (todoCount > 5) score -= 5;
+    if (hackCount > 0) score -= 15;
+    if (printCount > 0) score -= 5;
+    if (debugPrintCount > 0) score -= 5;
+    if (emptyCatchCount > 0) score -= 10;
+    return score.clamp(0, 100);
+  }
+
+  int _computePerformanceScore({
+    required int printCount,
+    required int debugPrintCount,
+    required int largeFileCount,
+    required String buildStatus,
+    required String testStatus,
+  }) {
+    var score = 100;
+    if (printCount > 10) score -= 10;
+    if (debugPrintCount > 10) score -= 10;
+    if (largeFileCount > 0) score -= 10;
+    if (buildStatus == 'Failed') score -= 20;
+    if (testStatus == 'Failed') score -= 15;
+    return score.clamp(0, 100);
+  }
+
+  String _buildAiReviewSummary({
+    required int todoCount,
+    required int fixmeCount,
+    required int hackCount,
+    required int printCount,
+    required int debugPrintCount,
+    required int largeFileCount,
+    required int emptyCatchCount,
+  }) {
+    final issues = <String>[];
+    if (todoCount > 0) issues.add('$todoCount TODO items');
+    if (fixmeCount > 0) issues.add('$fixmeCount FIXME items');
+    if (hackCount > 0) issues.add('$hackCount HACK items');
+    if (printCount > 0) issues.add('$printCount print() statements');
+    if (debugPrintCount > 0) issues.add('$debugPrintCount debugPrint() calls');
+    if (largeFileCount > 0)
+      issues.add('$largeFileCount large files (>500 lines)');
+    if (emptyCatchCount > 0) issues.add('$emptyCatchCount empty catch blocks');
+
+    if (issues.isEmpty) {
+      return 'Codebase looks clean for a pre-SQA pass with no major hygiene issues detected.';
+    }
+
+    return 'Review summary: ${issues.join(', ')}. Focus on removing debug output, addressing temporary comments, and breaking up large files before QA handoff.';
+  }
+
+  Future<void> _writeSqaHandoffReport(String path, ReportData data) async {
+    final buffer = StringBuffer();
+    buffer.writeln('# SQA Handoff Report');
+    buffer.writeln();
+    buffer.writeln('Project: ${data.projectName}');
+    buffer.writeln('Flutter version: ${data.flutterVersion}');
+    buffer.writeln('Dart version: ${data.dartVersion}');
+    buffer.writeln();
+    buffer.writeln('## Key metrics');
+    buffer.writeln('- Architecture score: ${data.architectureScore}%');
+    buffer.writeln('- Security score: ${data.securityScore}%');
+    buffer.writeln('- Performance score: ${data.performanceScore}%');
+    buffer.writeln('- Total warnings: ${data.totalWarnings}');
+    buffer.writeln(
+        '- TODO/FIXME/HACK count: ${data.todoCount + data.fixmeCount + data.hackCount}');
+    buffer.writeln(
+        '- print/debugPrint count: ${data.printCount + data.debugPrintCount}');
+    buffer.writeln('- Build status: ${data.buildStatus}');
+    buffer.writeln('- Test status: ${data.testStatus}');
+    buffer.writeln();
+    buffer.writeln('## AI review summary');
+    buffer.writeln(data.aiReviewSummary);
+    buffer.writeln();
+    buffer.writeln('## Recommended actions');
+    buffer.writeln('- Remove or replace debug logging before QA handoff.');
+    buffer.writeln('- Resolve TODO/FIXME/HACK items that may hide issues.');
+    buffer.writeln('- Address empty catch blocks and large files.');
+    buffer
+        .writeln('- Confirm dependency audit warnings do not impact security.');
+    buffer.writeln();
+    buffer.writeln('## Check results');
+    buffer.writeln();
+    for (final result in data.results) {
+      buffer.writeln('### ${result.title}');
+      buffer.writeln('- Status: ${result.failed ? 'FAIL' : 'PASS'}');
+      buffer.writeln('- Required: ${result.required ? 'Yes' : 'No'}');
+      buffer.writeln('- Notes:');
+      buffer.writeln('  ```');
+      buffer.writeln('  ${result.notes.replaceAll('\n', '\n  ')}');
+      buffer.writeln('  ```');
+      buffer.writeln();
+    }
+    await File(path).writeAsString(buffer.toString());
+  }
+
+  Future<void> _writeReleaseReadinessReport(
+      String path, ReportData data) async {
+    final buffer = StringBuffer();
+    buffer.writeln('# Release Readiness Report');
+    buffer.writeln();
+    buffer.writeln('Project: ${data.projectName}');
+    buffer.writeln('Flutter version: ${data.flutterVersion}');
+    buffer.writeln('Dart version: ${data.dartVersion}');
+    buffer.writeln();
+    buffer.writeln('## Readiness summary');
+    buffer.writeln(
+        '- Overall status: ${data.failedChecks > 0 ? 'Not ready' : 'Ready'}');
+    buffer.writeln('- Architecture score: ${data.architectureScore}%');
+    buffer.writeln('- Security score: ${data.securityScore}%');
+    buffer.writeln('- Performance score: ${data.performanceScore}%');
+    buffer.writeln('- Coverage: ${data.coverageSummary}');
+    buffer.writeln();
+    buffer.writeln('## Release readiness details');
+    buffer.writeln('- Required failures: ${data.failedChecks}');
+    buffer.writeln('- Dependency issues: ${data.dependencyIssues.length}');
+    buffer.writeln(
+        '- Outstanding hygiene issues: ${data.todoCount + data.fixmeCount + data.hackCount}');
+    buffer.writeln(
+        '- Output logs for critical checks are available in the main report files.');
+    buffer.writeln();
+    buffer.writeln('## Action items before release');
+    buffer.writeln('- Fix all failing required checks.');
+    buffer.writeln(
+        '- Resolve dependency issues, especially security-related warnings.');
+    buffer.writeln('- Ensure coverage report is generated and acceptable.');
+    buffer.writeln(
+        '- Review AI summary and address highlighted hygiene concerns.');
+    await File(path).writeAsString(buffer.toString());
+  }
+
+  Future<void> _writeMarkdown(String path, ReportData data) async {
+    final buffer = StringBuffer();
+    buffer.writeln('# Flutter Pre-SQA Report');
+    buffer.writeln();
+    buffer.writeln('- Project: ${data.projectName}');
+    buffer.writeln('- Flutter: ${data.flutterVersion}');
+    buffer.writeln('- Dart: ${data.dartVersion}');
+    buffer.writeln('- Passed checks: ${data.passedChecks}');
+    buffer.writeln('- Failed checks: ${data.failedChecks}');
+    buffer.writeln('- Total warnings: ${data.totalWarnings}');
+    buffer.writeln('- Architecture score: ${data.architectureScore}%');
+    buffer.writeln('- Security score: ${data.securityScore}%');
+    buffer.writeln('- Performance score: ${data.performanceScore}%');
+    buffer.writeln('- Build status: ${data.buildStatus}');
+    buffer.writeln('- Test status: ${data.testStatus}');
+    buffer.writeln('- TODO count: ${data.todoCount}');
+    buffer.writeln('- FIXME count: ${data.fixmeCount}');
+    buffer.writeln('- HACK count: ${data.hackCount}');
+    buffer.writeln('- print() count: ${data.printCount}');
+    buffer.writeln('- debugPrint() count: ${data.debugPrintCount}');
+    buffer.writeln();
+    buffer.writeln('## Check results');
+    buffer.writeln();
+    buffer.writeln('| Check | Status | Required | Notes |');
+    buffer.writeln('|---|---|---|---|');
+    for (final result in data.results) {
+      buffer.writeln(
+          '| ${result.title} | ${result.failed ? 'FAIL' : 'PASS'} | ${result.required ? 'Yes' : 'No'} | ${result.notes.replaceAll('\n', '<br>')} |');
+    }
+    await File(path).writeAsString(buffer.toString());
+  }
+
+  Future<void> _writeHtml(String path, ReportData data) async {
+    final html = '''<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Flutter Pre-SQA Report</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 24px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+    th, td { border: 1px solid #ddd; padding: 8px; }
+    th { background: #f3f3f3; }
+    tr:nth-child(even){ background: #f9f9f9; }
+    .fail { color: red; }
+    .pass { color: green; }
+  </style>
+</head>
+<body>
+<h1>Flutter Pre-SQA Report</h1>
+<ul>
+  <li>Project: ${data.projectName}</li>
+  <li>Flutter: ${data.flutterVersion}</li>
+  <li>Dart: ${data.dartVersion}</li>
+  <li>Passed checks: ${data.passedChecks}</li>
+  <li>Failed checks: ${data.failedChecks}</li>
+  <li>Total warnings: ${data.totalWarnings}</li>
+  <li>Architecture score: ${data.architectureScore}%</li>
+  <li>Security score: ${data.securityScore}%</li>
+  <li>Performance score: ${data.performanceScore}%</li>
+  <li>Build status: ${data.buildStatus}</li>
+  <li>Test status: ${data.testStatus}</li>
+</ul>
+<p>${data.aiReviewSummary}</p>
+<h2>Details</h2>
+<table>
+  <thead>
+    <tr><th>Check</th><th>Status</th><th>Required</th><th>Notes</th></tr>
+  </thead>
+  <tbody>
+${data.results.map((result) => '    <tr><td>${result.title}</td><td class="${result.failed ? 'fail' : 'pass'}">${result.failed ? 'FAIL' : 'PASS'}</td><td>${result.required ? 'Yes' : 'No'}</td><td>${result.notes.replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('\n', '<br />')}</td></tr>').join('\n')}
+  </tbody>
+</table>
+</body>
+</html>''';
+    await File(path).writeAsString(html);
+  }
+
+  Future<void> _writeJson(String path, ReportData data) async {
+    final json = {
+      'projectName': data.projectName,
+      'flutterVersion': data.flutterVersion,
+      'dartVersion': data.dartVersion,
+      'totalWarnings': data.totalWarnings,
+      'totalErrors': data.totalErrors,
+      'passedChecks': data.passedChecks,
+      'failedChecks': data.failedChecks,
+      'dependencyIssues': data.dependencyIssues,
+      'todoCount': data.todoCount,
+      'fixmeCount': data.fixmeCount,
+      'hackCount': data.hackCount,
+      'printCount': data.printCount,
+      'debugPrintCount': data.debugPrintCount,
+      'buildStatus': data.buildStatus,
+      'testStatus': data.testStatus,
+      'coverageSummary': data.coverageSummary,
+      'architectureScore': data.architectureScore,
+      'securityScore': data.securityScore,
+      'performanceScore': data.performanceScore,
+      'aiReviewSummary': data.aiReviewSummary,
+      'results': data.results
+          .map((result) => {
+                'title': result.title,
+                'command': result.command,
+                'exitCode': result.exitCode,
+                'required': result.required,
+                'notes': result.notes,
+              })
+          .toList(),
+    };
+    await File(path)
+        .writeAsString(const JsonEncoder.withIndent('  ').convert(json));
+  }
+}

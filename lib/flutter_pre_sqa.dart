@@ -1,3 +1,2 @@
-library flutter_pre_sqa;
-
+export 'src/cli.dart';
 export 'src/pre_sqa_runner.dart';
