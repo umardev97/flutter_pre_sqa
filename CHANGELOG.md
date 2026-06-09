@@ -2,7 +2,7 @@
 
 All notable changes to this project are documented in this file.
 
-## 1.0.1
+## 0.1.0 - 2026-06-09
 
 - Added MIT license.
 - Added DartDoc comments.
