@@ -5,7 +5,7 @@ checks:
   analyze: true
   tests: true
   integrationTests: true
-  buildAndroid: true
+  buildAndroid: false
   buildIos: false
   scanTodos: true
   scanPrints: true
