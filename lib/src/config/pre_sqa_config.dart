@@ -2,9 +2,27 @@ import 'dart:io';
 
 import 'package:yaml/yaml.dart';
 
-enum ReportFormat { markdown, html, json, all }
+/// Supported report output formats for `flutter_pre_sqa`.
+enum ReportFormat {
+  /// Generate Markdown reports.
+  markdown,
 
+  /// Generate HTML reports.
+  html,
+
+  /// Generate JSON reports.
+  json,
+
+  /// Generate all supported report formats.
+  all,
+}
+
+/// Configuration model for the `flutter_pre_sqa` package.
+///
+/// This class loads YAML configuration from `pre_sqa.yaml` and exposes
+/// defaults when the file is missing or incomplete.
 class PreSqaConfig {
+  /// Creates a configuration model from the provided values.
   PreSqaConfig({
     required this.project,
     required this.checks,
@@ -14,13 +32,25 @@ class PreSqaConfig {
     required this.scanDirectories,
   });
 
+  /// Project metadata configuration.
   final ProjectConfig project;
+
+  /// Validation checks configuration.
   final ChecksConfig checks;
+
+  /// Rules that control failure behavior.
   final RulesConfig rules;
+
+  /// Report generation configuration.
   final ReportConfig report;
+
+  /// Glob patterns for directories and files to exclude from scanning.
   final List<String> exclude;
+
+  /// Directories to include in source hygiene scans.
   final List<String> scanDirectories;
 
+  /// Creates a default configuration when no config file exists.
   factory PreSqaConfig.empty() {
     return PreSqaConfig(
       project: ProjectConfig(name: 'Flutter Project'),
@@ -32,6 +62,7 @@ class PreSqaConfig {
     );
   }
 
+  /// Creates a configuration instance from YAML content.
   factory PreSqaConfig.fromYaml(String yamlContent) {
     final map = loadYaml(yamlContent);
     if (map is! YamlMap) {
@@ -49,6 +80,7 @@ class PreSqaConfig {
     );
   }
 
+  /// Returns a copy of this config with updated scan directories.
   PreSqaConfig copyWith({List<String>? scanDirectories}) {
     return PreSqaConfig(
       project: project,
@@ -71,6 +103,9 @@ class PreSqaConfig {
     return defaultValue;
   }
 
+  /// Loads the configuration from the given [path].
+  ///
+  /// If the file does not exist, default configuration values are returned.
   static Future<PreSqaConfig> load([String path = 'pre_sqa.yaml']) async {
     final file = File(path);
     if (!file.existsSync()) {
@@ -80,6 +115,7 @@ class PreSqaConfig {
     return PreSqaConfig.fromYaml(content);
   }
 
+  /// Sample YAML configuration that can be written to disk.
   static String get sampleYaml => '''
 project:
   name: My App
@@ -117,10 +153,15 @@ scan_directories:
 ''';
 }
 
+/// Basic project metadata configuration.
 class ProjectConfig {
+  /// Creates project metadata with a required [name].
   ProjectConfig({required this.name});
+
+  /// The project display name used in reports.
   final String name;
 
+  /// Creates project metadata from YAML parsed data.
   factory ProjectConfig.fromYaml(dynamic yaml) {
     if (yaml is YamlMap && yaml['name'] != null) {
       return ProjectConfig(name: yaml['name'].toString());
@@ -129,7 +170,9 @@ class ProjectConfig {
   }
 }
 
+/// Configuration for the validation checks that should run.
 class ChecksConfig {
+  /// Creates a checks configuration.
   ChecksConfig({
     required this.analyze,
     required this.tests,
@@ -143,17 +186,37 @@ class ChecksConfig {
     required this.dependencyAudit,
   });
 
+  /// Enable static analysis.
   final bool analyze;
+
+  /// Enable unit/widget tests.
   final bool tests;
+
+  /// Enable integration tests.
   final bool integrationTests;
+
+  /// Enable Android build checks.
   final bool buildAndroid;
+
+  /// Enable iOS build checks.
   final bool buildIos;
+
+  /// Enable scanning for TODO items.
   final bool scanTodos;
+
+  /// Enable scanning for print statements.
   final bool scanPrints;
+
+  /// Enable scanning for FIXME items.
   final bool scanFixmes;
+
+  /// Enable scanning for HACK items.
   final bool scanHacks;
+
+  /// Enable dependency audit checks.
   final bool dependencyAudit;
 
+  /// Returns the default checks configuration.
   factory ChecksConfig.defaults() {
     return ChecksConfig(
       analyze: true,
@@ -169,6 +232,7 @@ class ChecksConfig {
     );
   }
 
+  /// Creates a checks configuration from YAML parsed values.
   factory ChecksConfig.fromYaml(dynamic yaml) {
     if (yaml is! YamlMap) return ChecksConfig.defaults();
     return ChecksConfig(
@@ -186,17 +250,25 @@ class ChecksConfig {
   }
 }
 
+/// Rules that govern when validation should fail.
 class RulesConfig {
+  /// Creates a rules configuration.
   RulesConfig({
     required this.failOnWarnings,
     required this.failOnTodos,
     required this.failOnPrints,
   });
 
+  /// Fail when warnings are present.
   final bool failOnWarnings;
+
+  /// Fail when TODO items are present.
   final bool failOnTodos;
+
+  /// Fail when `print()` or `debugPrint()` artifacts are present.
   final bool failOnPrints;
 
+  /// Returns the default rules configuration.
   factory RulesConfig.defaults() {
     return RulesConfig(
       failOnWarnings: false,
@@ -205,6 +277,7 @@ class RulesConfig {
     );
   }
 
+  /// Creates a rules configuration from YAML parsed values.
   factory RulesConfig.fromYaml(dynamic yaml) {
     if (yaml is! YamlMap) return RulesConfig.defaults();
     return RulesConfig(
@@ -215,16 +288,24 @@ class RulesConfig {
   }
 }
 
+/// Report output configuration.
 class ReportConfig {
+  /// Creates report output configuration.
   ReportConfig({required this.format, required this.output});
+
+  /// The desired report format.
   final ReportFormat format;
+
+  /// The base file path used for generated reports.
   final String output;
 
+  /// Returns the default report configuration.
   factory ReportConfig.defaults() {
     return ReportConfig(
         format: ReportFormat.markdown, output: 'pre_sqa_report.md');
   }
 
+  /// Creates report configuration from YAML parsed values.
   factory ReportConfig.fromYaml(dynamic yaml) {
     if (yaml is! YamlMap) return ReportConfig.defaults();
 

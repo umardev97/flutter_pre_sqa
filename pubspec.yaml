@@ -5,6 +5,15 @@ homepage: https://github.com/umardev97/flutter_pre_sqa
 repository: https://github.com/umardev97/flutter_pre_sqa
 issue_tracker: https://github.com/umardev97/flutter_pre_sqa/issues
 documentation: https://github.com/umardev97/flutter_pre_sqa#readme
+topics:
+  - flutter
+  - dart
+  - cli
+  - static-analysis
+  - code-quality
+  - sqa
+  - quality-assurance
+  - testing
 
 environment:
   sdk: ">=3.0.0 <4.0.0"

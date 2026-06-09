@@ -1,11 +1,18 @@
 # Changelog
 
-All notable changes to this project will be documented in this file.
+All notable changes to this project are documented in this file.
 
-## [0.1.0] - Initial release
+## 1.0.1
 
-- Initial package scaffold
+- Added MIT license.
+- Added DartDoc comments.
+- Improved package documentation.
+
+
+## [1.0.0] - 2026-06-09
+
+- Initial release of `flutter_pre_sqa`
 - Added CLI commands for validation, reporting, auditing, fixing, and cleaning
 - Added `pre_sqa.yaml` configuration support
-- Added Markdown, HTML, and JSON reporting
+- Added Markdown, HTML, and JSON report generation
 - Added code hygiene scanning and build/test validation

@@ -7,12 +7,24 @@ import 'pre_sqa_runner.dart';
 import 'services/environment_service.dart';
 import 'reports/report_generator.dart';
 
+/// CLI entrypoint for the `flutter_pre_sqa` package.
+///
+/// This class handles command parsing and delegates execution to the runner
+/// and report generator.
 class FlutterPreSqaCli {
+  /// The package name used by the CLI.
   static const packageName = 'flutter_pre_sqa';
+
+  /// A short description of the package functionality.
   static const packageDescription =
       'A developer-first Flutter pre-SQA automation tool for Flutter projects.';
+
+  /// The current package version.
   static const packageVersion = '0.1.0';
 
+  /// Runs the CLI with the provided [arguments].
+  ///
+  /// Returns an exit code suitable for process termination.
   Future<int> run(List<String> arguments) async {
     final command = arguments.isEmpty ? 'run' : arguments.first;
     final commandArgs = arguments.skip(1).toList();
@@ -44,6 +56,7 @@ class FlutterPreSqaCli {
     }
   }
 
+  /// Creates a sample configuration file.
   int _handleInit(List<String> arguments) {
     final fileName = arguments.isNotEmpty ? arguments.first : 'pre_sqa.yaml';
     if (File(fileName).existsSync()) {
@@ -57,6 +70,7 @@ class FlutterPreSqaCli {
     return 0;
   }
 
+  /// Verifies the local Flutter and Dart environment.
   Future<int> _handleDoctor(List<String> arguments) async {
     final verbose = arguments.contains('--verbose');
     final env = EnvironmentService();
@@ -65,6 +79,7 @@ class FlutterPreSqaCli {
     return result.success ? 0 : 1;
   }
 
+  /// Runs validation report generation using the `report` command.
   Future<int> _handleReport(List<String> arguments) async {
     final parser = ArgParser()
       ..addFlag('json', negatable: false, help: 'Generate JSON report.')
@@ -97,6 +112,7 @@ class FlutterPreSqaCli {
     return score;
   }
 
+  /// Runs formatting and fix actions.
   Future<int> _handleFix(List<String> arguments) async {
     final parser = ArgParser()
       ..addFlag('verbose', negatable: false, help: 'Show diagnostic logs.');
@@ -113,6 +129,7 @@ class FlutterPreSqaCli {
     return 0;
   }
 
+  /// Deletes generated reports, coverage output, and temporary build directories.
   Future<int> _handleClean(List<String> arguments) async {
     final directories = <String>['build', '.dart_tool', 'coverage'];
     for (final dir in directories) {
@@ -137,6 +154,7 @@ class FlutterPreSqaCli {
     return 0;
   }
 
+  /// Runs strict CI validation.
   Future<int> _handleCi(List<String> arguments) async {
     final config = await PreSqaConfig.load();
     final runner =
@@ -146,6 +164,7 @@ class FlutterPreSqaCli {
     return exitCode;
   }
 
+  /// Runs dependency audit and hygiene scan only.
   Future<int> _handleAudit(List<String> arguments) async {
     final parser = ArgParser()
       ..addFlag('verbose', negatable: false, help: 'Show diagnostic logs.');
@@ -157,11 +176,13 @@ class FlutterPreSqaCli {
     return await runner.runAudit();
   }
 
+  /// Prints the package version.
   int _handleVersion() {
     stdout.writeln('$packageName $packageVersion');
     return 0;
   }
 
+  /// Runs the default validation flow.
   Future<int> _handleRun(List<String> arguments) async {
     final parser = ArgParser()
       ..addFlag('fix', negatable: false, help: 'Run fix actions after checks.')
@@ -232,6 +253,7 @@ class FlutterPreSqaCli {
     return exitCode;
   }
 
+  /// Prints CLI usage information.
   void _printUsage() {
     stdout.writeln('Usage: flutter_pre_sqa [command] [options]');
     stdout.writeln('Commands:');

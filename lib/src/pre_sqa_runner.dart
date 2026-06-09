@@ -5,7 +5,15 @@ import 'models/check_result.dart';
 import 'services/environment_service.dart';
 import 'services/process_runner.dart';
 
+/// Executes the validation flow for a Flutter project.
+///
+/// The runner performs environment checks, analysis, tests, dependency audit,
+/// optional builds, and hygiene scans based on the package configuration.
 class PreSqaRunner {
+  /// Creates a new runner with the provided [config].
+  ///
+  /// The optional [verbose] flag enables diagnostic output. If [processRunner]
+  /// is not provided, a default [ProcessRunner] instance is used.
   PreSqaRunner(
       {required this.config,
       this.verbose = false,
@@ -13,13 +21,27 @@ class PreSqaRunner {
       : processRunner = processRunner ?? ProcessRunner(),
         environment = EnvironmentService();
 
+  /// Effective configuration loaded from `pre_sqa.yaml` or defaults.
   final PreSqaConfig config;
+
+  /// Whether verbose logging is enabled.
   final bool verbose;
+
+  /// Helper for command execution.
   final ProcessRunner processRunner;
+
+  /// Helper for environment verification.
   final EnvironmentService environment;
+
+  /// Collected validation results.
   final List<CheckResult> results = [];
+
+  /// Coverage summary produced after a coverage-enabled test run.
   String coverageSummary = 'Not generated';
 
+  /// Runs the full validation process.
+  ///
+  /// The runner returns a non-zero exit code if required checks fail.
   Future<int> run({
     bool strict = false,
     bool ci = false,
@@ -96,6 +118,7 @@ class PreSqaRunner {
     return results.any((result) => result.failed && result.required) ? 1 : 0;
   }
 
+  /// Runs dependency and hygiene audit without full project validation.
   Future<int> runAudit() async {
     _printHeader();
     final envCheck = await environment.verify(verbose: verbose);
@@ -113,12 +136,18 @@ class PreSqaRunner {
     return results.any((result) => result.failed && result.required) ? 1 : 0;
   }
 
+  /// Applies formatter and automated Dart fixes.
   Future<void> runFixes() async {
     await _runCommand('Format Dart code', 'dart', ['format', '.'],
         required: false);
     await _runCommand('Apply Dart fixes', 'dart', ['fix', '--apply'],
         required: false);
   }
+
+  /// Returns the current project scan results.
+  ///
+  /// The list is populated as the validation run executes.
+  List<CheckResult> get scanResults => results;
 
   Future<void> _runProjectScan() async {
     final directories = config.scanDirectories

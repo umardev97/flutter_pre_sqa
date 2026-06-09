@@ -1,89 +1,91 @@
 # flutter_pre_sqa
 
-A developer-first Flutter pre-SQA automation tool for validating Flutter projects before handing them to QA/SQA teams.
+`flutter_pre_sqa` is a developer-first Dart CLI package for validating Flutter projects before handing them to QA or SQA teams.
 
-## What it does
+## Features
 
-- Validates Flutter project structure and toolchain
-- Runs analysis, tests, dependency audits, and builds
-- Scans code hygiene for `print()`, `debugPrint()`, `TODO`, `FIXME`, `HACK`, empty catch blocks, and large files
-- Generates Markdown, HTML, and JSON reports
-- Supports `pre_sqa.yaml` configuration for project-specific checks
-- Provides CLI commands for init, doctor, report, fix, clean, ci, audit, and version
+- Verify Flutter and Dart toolchain health
+- Run static analysis and unit/widget tests
+- Audit package dependencies
+- Scan source code for hygiene issues like `TODO`, `FIXME`, `HACK`, `print()`, `debugPrint()`, empty catch blocks, and large files
+- Generate Markdown, HTML, and JSON reports
+- Produce SQA handoff and release readiness summaries
+- Support per-project configuration via `pre_sqa.yaml`
+- Provide CI-friendly execution with strict validation options
 
-## Install
+## Installation
 
-Add to your Flutter or Dart project as a dev dependency:
+Add `flutter_pre_sqa` to your project as a dev dependency:
 
 ```yaml
 dev_dependencies:
   flutter_pre_sqa: ^0.1.0
 ```
 
-Then run:
+Then install:
 
 ```bash
 flutter pub get
+```
+
+Run it from your project root:
+
+```bash
 dart run flutter_pre_sqa
 ```
 
-Or install globally with `dart pub global activate` if preferred.
+## Usage
+
+### Create a sample config
+
+```bash
+dart run flutter_pre_sqa init
+```
+
+### Run validation and report generation
+
+```bash
+dart run flutter_pre_sqa report --markdown --html --json
+```
+
+### Run CI-friendly validation
+
+```bash
+dart run flutter_pre_sqa ci --coverage
+```
+
+### Run a dependency and hygiene audit only
+
+```bash
+dart run flutter_pre_sqa audit
+```
+
+### Skip builds for packages or libraries
+
+```bash
+dart run flutter_pre_sqa --skip-build
+```
+
+### Example with verbose logging
+
+```bash
+dart run flutter_pre_sqa ci --coverage --verbose
+```
 
 ## CLI commands
 
-```bash
-# Default validation run
-dart run flutter_pre_sqa
-
-# Create a sample configuration
-dart run flutter_pre_sqa init
-
-# Verify Flutter/Dart toolchain
-dart run flutter_pre_sqa doctor
-
-# Generate reports
-dart run flutter_pre_sqa report --markdown --html --json
-
-# Apply formatting fixes
-dart run flutter_pre_sqa fix
-
-# Clean generated reports and build artifacts
-dart run flutter_pre_sqa clean
-
-# Run CI-friendly validation
-dart run flutter_pre_sqa ci --coverage
-
-# Run dependency and hygiene audit only
-dart run flutter_pre_sqa audit
-
-# Show package version
-dart run flutter_pre_sqa version
-```
-
-## CLI flags
-
-- `--fix`
-- `--strict`
-- `--ci`
-- `--skip-build`
-- `--skip-tests`
-- `--android`
-- `--ios`
-- `--coverage`
-- `--json`
-- `--html`
-- `--markdown`
-- `--verbose`
-
-Example:
-
-```bash
-dart run flutter_pre_sqa --strict --coverage --html --json
-```
+- `init` — create a sample `pre_sqa.yaml`
+- `doctor` — verify Flutter/Dart environment
+- `report` — run checks and generate reports
+- `fix` — run formatter and auto-fixes
+- `clean` — delete generated reports and build artifacts
+- `ci` — run strict CI validation
+- `audit` — run dependency and hygiene audit only
+- `version` — show package version
 
 ## Configuration: `pre_sqa.yaml`
 
-Create or update `pre_sqa.yaml` in your project root.
+Create or update `pre_sqa.yaml` in your project root to override defaults.
 
 ```yaml
 project:
@@ -93,7 +95,7 @@ checks:
   analyze: true
   tests: true
   integrationTests: true
-  buildAndroid: true
+  buildAndroid: false
   buildIos: false
   scanTodos: true
   scanPrints: true
@@ -121,13 +123,7 @@ scan_directories:
   - integration_test
 ```
 
-## Example usage
-
-```bash
-dart run flutter_pre_sqa audit --verbose
-```
-
-## Example programmatic usage
+## Programmatic usage
 
 ```dart
 import 'package:flutter_pre_sqa/flutter_pre_sqa.dart';
@@ -138,30 +134,23 @@ Future<void> main() async {
 }
 ```
 
-## Report outputs
+## Report output
 
-Reports include:
+When enabled, generated reports include:
 
-- Project name
+- Project metadata
 - Flutter and Dart versions
-- Total warnings and errors
 - Passed and failed checks
-- Dependency issues
-- TODO/FIXME/HACK counts
-- Print/debugPrint counts
+- Dependency audit notes
+- Code hygiene counts
 - Build and test status
+- Architecture, security, and performance scores
+- AI review summary
 
-## Publishing to pub.dev
+## GitHub Actions
 
-1. Confirm the package name is available on pub.dev.
-2. Update `version` in `pubspec.yaml`.
-3. Run `dart pub publish --dry-run`.
-4. If successful, run `dart pub publish`.
+Use the example workflow in `.github/workflows/flutter_pre_sqa.yml` for CI validation.
 
-## CI/CD examples
+## License
 
-See `.github/workflows/flutter_pre_sqa.yml`, `.gitlab-ci.yml`, `bitbucket-pipelines.yml`, `codemagic.yaml`, and `Jenkinsfile`.
-
-## Important
-
-This CLI helps catch technical and hygiene issues before QA, but it does not replace manual business logic validation or design review.
+`flutter_pre_sqa` is released under the MIT License.

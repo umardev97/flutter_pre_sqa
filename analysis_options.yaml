@@ -5,3 +5,4 @@ linter:
     avoid_print: false
     always_declare_return_types: true
     prefer_final_locals: true
+    public_member_api_docs: true
