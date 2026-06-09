@@ -231,8 +231,9 @@ class ReportGenerator {
     if (hackCount > 0) issues.add('$hackCount HACK items');
     if (printCount > 0) issues.add('$printCount print() statements');
     if (debugPrintCount > 0) issues.add('$debugPrintCount debugPrint() calls');
-    if (largeFileCount > 0)
+    if (largeFileCount > 0) {
       issues.add('$largeFileCount large files (>500 lines)');
+    }
     if (emptyCatchCount > 0) issues.add('$emptyCatchCount empty catch blocks');
 
     if (issues.isEmpty) {
